@@ -1,0 +1,17 @@
+name: "API Gateway"
+services:
+  - name: Public api 
+    path: /api 
+    target: "http://localhost"
+    target_port: 5000
+    append_path: true 
+  - name: Transaction Service 
+    path: /v1/transactions
+    target: "http://localhost"
+    target_port: 8080
+    append_path: false 
+  - name: Product service 
+    path: /v1/products
+    target: "http://localhost"
+    target_port: 8081
+    append_path: false 
