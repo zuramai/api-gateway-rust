@@ -11,13 +11,17 @@ pub struct ServiceConfig {
     pub name: String,
     pub path: String,
     pub target: String,
-    pub target_port: String,
+    pub target_port: Option<String>,
     pub append_path: bool,
 }
 
 impl ServiceConfig {
     pub fn get_full_url(&self) -> String {
-        format!("{}:{}{}", self.target, self.target_port, self.path)
+        let target_port = match &self.target_port {
+            Some(port) => format!(":{}",port),
+            None => String::new(),
+        };
+        format!("{}{}{}", self.target, target_port, self.path)
     }
 }
 
@@ -67,7 +71,7 @@ impl ServiceConfig {
 
 
     pub async fn send_request(&self, req: Request<Incoming>) -> Result<Response<Incoming>, hyper::Error> {
-        let addr = format!("{}:{}", self.target, self.target_port);
+        let addr = self.get_full_url();
         let stream = TcpStream::connect(addr).await.unwrap();
         let io = TokioIo::new(stream);
 
