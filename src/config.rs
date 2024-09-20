@@ -15,6 +15,12 @@ pub struct ServiceConfig {
     pub append_path: bool,
 }
 
+impl ServiceConfig {
+    pub fn get_full_url(&self) -> String {
+        format!("{}:{}{}", self.target, self.target_port, self.path)
+    }
+}
+
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct GatewayConfig {
@@ -23,8 +29,8 @@ pub struct GatewayConfig {
 }
 
 impl GatewayConfig {
-    pub fn get_service_config(&self, path: &str) -> Option<&ServiceConfig> {
-        self.services.iter().find(|s| s.path == path)
+    pub fn get_service_config(&self, path: String) -> Option<ServiceConfig> {
+        self.services.iter().find(|s| s.path == path).cloned()
     }
 
 }
@@ -38,26 +44,26 @@ pub fn load_config(path: &str) -> GatewayConfig {
 
 
 impl ServiceConfig {
-    pub fn build_downstream_request(&self, parts: Parts, body: hyper::body::Incoming) -> Result<Request<Body>, hyper::http::Error> {
-        let req = Request::from_parts(parts, body);
-        let uri = format!(
-            "{}:{}{}",
-            self.target,
-            self.target_port,
-            req.uri().path()
-        );
+    // pub fn build_downstream_request(&self, parts: Parts, body: hyper::body::Incoming) -> Result<Request<Body>, hyper::http::Error> {
+    //     let req = Request::from_parts(parts, body);
+    //     let uri = format!(
+    //         "{}:{}{}",
+    //         self.target,
+    //         self.target_port,
+    //         req.uri().path()
+    //     );
 
-        let mut downstream_req_builder = Request::builder()
-            .uri(uri)
-            .method(req.method())
-            .version(req.version());
+    //     let mut downstream_req_builder = Request::builder()
+    //         .uri(uri)
+    //         .method(req.method())
+    //         .version(req.version());
 
-        *downstream_req_builder.headers_mut().unwrap() = req.headers().clone();
+    //     *downstream_req_builder.headers_mut().unwrap() = req.headers().clone();
 
-        let downstream_req = downstream_req_builder.body(body);
+    //     let downstream_req = downstream_req_builder.body(body);
 
-        downstream_req
-    }
+    //     downstream_req
+    // }
 
 
     pub async fn send_request(&self, req: Request<Incoming>) -> Result<Response<Incoming>, hyper::Error> {

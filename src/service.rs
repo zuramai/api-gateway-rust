@@ -1,12 +1,12 @@
 use std::{future::Future, ops::Deref, pin::Pin};
 use bytes::{Buf, Bytes};
-use hyper::{body::{Body, Incoming}, service::Service, Request, StatusCode};
+use hyper::{body::{Body, Incoming}, header, service::Service, Request, Response, StatusCode};
 use http_body_util::Full;
 use reqwest::{Client};
 use std::convert::TryInto;
 
 
-use crate::{config::{self, ServiceConfig}, error, response};
+use crate::{config::{self, ServiceConfig}, error::{self, GatewayError}, response};
 
 pub struct GatewayService {
     config: config::GatewayConfig
@@ -19,14 +19,11 @@ impl GatewayService {
         }
     } 
 
-    fn not_found(&self) -> response::Response {
-        response::Response::new(StatusCode::NOT_FOUND, String::from("Not found"))
-    }
 
-    pub async fn forward_request(mut req: Request<hyper::body::Incoming>) -> Result<hyper::Response<bytes::Bytes>, error::GatewayError> {
+    pub async fn forward_request(mut req: Request<hyper::body::Incoming>, service_config: &ServiceConfig) -> Result<hyper::Response<Full<Bytes>>, GatewayError> {
         let client = Client::new();
 
-        let mut builder = client.request(req.method().clone(), req.uri().to_string());
+        let mut builder = client.request(req.method().clone(), service_config.get_full_url());
         
         for (key, value) in req.headers().iter() {
             builder = builder.header(key, value);
@@ -41,7 +38,7 @@ impl GatewayService {
         // Convert reqwest Response back to hyper Response
         let mut hyper_response = hyper::Response::builder()
             .status(response_status)
-            .body(bytes)
+            .body(Full::from(bytes))
             .map_err(|_| error::GatewayError::gateway_error())?;
 
         // Copy headers from the reqwest response back to the hyper response
@@ -54,26 +51,30 @@ impl GatewayService {
 
 
 impl Service<Request<Incoming>> for GatewayService {   
-    type Error = hyper::Error;
+    type Error = GatewayError;
     type Response = hyper::Response<Full<Bytes>>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
 
     fn call(&self, req: Request<Incoming>) -> Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>> {
-        let path = req.uri().path();
-        let service_config: &ServiceConfig;
-        let render_response = |response: response::Response| -> Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>> {
-            Box::pin(async {response.into_response()})
-        };
-        match self.config.get_service_config(path) {
-            Some(service) => service_config =service,
-            None => return Box::pin(async {self.not_found().into_response()})
-        };
-
-
-        Box::pin(async {
-            let response = GatewayService::forward_request(req).await.unwrap();
-            response
+        let path = req.uri().path().to_owned();
+        let config = self.config.to_owned();
+        Box::pin(async move {
+            match config.get_service_config(path.to_owned()) {
+                Some(service) => {
+                    let response = GatewayService::forward_request(req, &service).await;
+                    response
+                },
+                None => return {
+                    let err = GatewayError::not_found();
+                    let json = serde_json::to_string(&err).unwrap_or_else(|_| "{}".to_string());
+                    Ok(Response::builder()
+                        .status(404)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Full::from(json))
+                        .unwrap())
+                }
+            }
         })
     }
 } 
