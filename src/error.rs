@@ -1,30 +1,29 @@
-use std::error::Error;
-use std::fmt;
+use thiserror::Error;
 
+use bytes::Bytes;
+use http_body_util::Full;
+use hyper::{StatusCode};
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+use crate::response::Response;
+
+#[derive(Debug, Serialize, Error)]
 pub enum GatewayError {
-    NotFound(String),
-    GatewayError(String)                                                                                                  
+    #[error("not found")]
+    NotFound,
+    #[error("internal server error")]
+    GatewayError,
 }
 
 impl GatewayError {
-    pub fn not_found() -> Self {
-        GatewayError::NotFound("Not found".into())
-    }
-    pub fn gateway_error() -> Self {
-        GatewayError::GatewayError("Internal server error".into())
+    pub fn into_response(self) -> Result<hyper::Response<Full<Bytes>>, GatewayError> {
+        let body = serde_json::to_string(&self).unwrap();
+        let code = match self {
+            GatewayError::GatewayError => StatusCode::INTERNAL_SERVER_ERROR,
+            GatewayError::NotFound => StatusCode::NOT_FOUND,
+        };
+
+        let res = Response::new(code, self.to_string());
+        res.into_response()
     }
 }
-
-impl fmt::Display for GatewayError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            GatewayError::NotFound(ref msg) => write!(f, "URL not found"),
-            GatewayError::GatewayError(ref msg) => write!(f, "Internal server error")
-        }
-    }
-}
-
-impl Error for GatewayError {}

@@ -3,6 +3,8 @@ use hyper::{StatusCode, Response as HyperResponse, Error};
 use http_body_util::Full;
 use bytes::Bytes;
 
+use crate::error::GatewayError;
+
 pub struct Response {
     status_code: hyper::StatusCode,
     message: String
@@ -12,7 +14,7 @@ impl Response {
         Response { status_code, message }
     }
 
-    pub fn into_response(self) -> Result<HyperResponse<Full<Bytes>>, hyper::Error> {
+    pub fn into_response(self) -> Result<HyperResponse<Full<Bytes>>, GatewayError> {
         let body = serde_json::to_string(&self).unwrap();
         let res = HyperResponse::builder()
             .status(self.status_code)

@@ -28,24 +28,29 @@ impl GatewayService {
         for (key, value) in req.headers().iter() {
             builder = builder.header(key, value);
         }
-        let bytes = http_body_util::BodyExt::collect(req.body_mut()).await.map_err(|_| error::GatewayError::gateway_error())?;
+        let bytes = http_body_util::BodyExt::collect(req.body_mut()).await.map_err(|_| error::GatewayError::GatewayError)?;
 
 
-        let response = builder.body(bytes.to_bytes()).send().await.map_err(|_| error::GatewayError::gateway_error())?;
+        let response = builder.body(bytes.to_bytes()).send().await.map_err(|_| error::GatewayError::GatewayError)?;
         let response_status = response.status();
         let response_headers = response.headers().clone();
-        let bytes = response.bytes().await.map_err(|_| error::GatewayError::gateway_error())?;
+        let bytes = response.bytes().await.map_err(|_| error::GatewayError::GatewayError)?;
         // Convert reqwest Response back to hyper Response
         let mut hyper_response = hyper::Response::builder()
             .status(response_status)
             .body(Full::from(bytes))
-            .map_err(|_| error::GatewayError::gateway_error())?;
+            .map_err(|_| error::GatewayError::GatewayError)?;
 
         // Copy headers from the reqwest response back to the hyper response
         for (key, value) in response_headers {
             hyper_response.headers_mut().insert(key.unwrap(), value.clone());
         }
         Ok(hyper_response)
+    }
+
+    pub async fn health_check() -> response::Response {
+        let res = response::Response::new(StatusCode::OK, "service healthy".into());
+        res
     }
 }
 
@@ -63,16 +68,20 @@ impl Service<Request<Incoming>> for GatewayService {
             match config.get_service_config(path.to_owned()) {
                 Some(service) => {
                     let response = GatewayService::forward_request(req, &service).await;
-                    response
+
+                    if let Err(err) = response {
+                        return err.into_response();
+                    }
+                    response 
                 },
                 None => return {
-                    let err = GatewayError::not_found();
-                    let json = serde_json::to_string(&err).unwrap_or_else(|_| "{}".to_string());
-                    Ok(Response::builder()
-                        .status(404)
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .body(Full::from(json))
-                        .unwrap())
+                    match path.as_str() {
+                        "/" => GatewayService::health_check().await.into_response(),
+                        _ => {
+                            let err = GatewayError::NotFound;
+                            err.into_response()
+                        }
+                    }
                 }
             }
         })

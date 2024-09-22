@@ -40,11 +40,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 match err.source().and_then(|e| e.downcast_ref::<GatewayError>()) {
                     Some(gateway_error) => {
                         println!("GatewayError occurred: {:?}", gateway_error);
-                        GatewayError::gateway_error()
+                        GatewayError::GatewayError
                     },
                     None => {
                         println!("An error occurred, but it's not a GatewayError.");
-                        GatewayError::gateway_error()
+                        GatewayError::GatewayError
                     }
                 };
             }
